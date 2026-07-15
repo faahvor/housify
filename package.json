@@ -1,0 +1,17 @@
+{
+  "name": "prestige-homes",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "build:frontend": "npm run build -w frontend",
+    "build:backend": "npm run build -w backend",
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w backend"
+  }
+}
