@@ -1,4 +1,4 @@
-export type UserRole = "landlord" | "agent";
+export type UserRole = "landlord" | "agent" | "realtor";
 
 export interface Money {
   currency: string;

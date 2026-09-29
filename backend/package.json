@@ -4,26 +4,32 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "predev": "node ../scripts/ensure-port.cjs 4000 backend",
+    "dev": "cross-env NODE_OPTIONS=\"--require ./scripts/dns-fix.cjs\" tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "prestart": "node ../scripts/ensure-port.cjs 4000 backend",
+    "start": "cross-env NODE_OPTIONS=\"--require ./scripts/dns-fix.cjs\" node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "seed:admin": "cross-env NODE_OPTIONS=\"--require ./scripts/dns-fix.cjs\" tsx src/scripts/seed-admin.ts",
+    "test:e2e": "cross-env NODE_OPTIONS=\"--require ./scripts/dns-fix.cjs\" tsx src/scripts/e2e-smoke.ts"
   },
   "dependencies": {
-    "@prestige-homes/types": "*",
-    "fastify": "^5.2.0",
     "@fastify/cors": "^10.0.2",
-    "mongoose": "^8.9.2",
-    "socket.io": "^4.8.1",
-    "jsonwebtoken": "^9.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@prestige-homes/types": "*",
     "bcrypt": "^5.1.1",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.2",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "tsx": "^4.19.2",
-    "@types/node": "^20.17.10",
+    "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.7",
-    "@types/bcrypt": "^5.0.2"
+    "@types/node": "^20.17.10",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
