@@ -15,6 +15,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export default function AdminProfilePage() {
   const token = useAppStore((s) => s.token);
   const setUser = useAppStore((s) => s.setUser);
+  const logIn = useAppStore((s) => s.logIn);
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -72,7 +73,9 @@ export default function AdminProfilePage() {
     setPasswordError("");
     setPasswordSaving(true);
     try {
-      await changePassword(token, currentPassword, newPassword);
+      const res = await changePassword(token, currentPassword, newPassword);
+      // Other sessions are signed out; this one continues with the new token.
+      if (res.token) logIn("admin", res.token);
       setPasswordSaved(true);
       setCurrentPassword("");
       setNewPassword("");

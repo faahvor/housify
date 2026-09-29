@@ -6,3 +6,5 @@ import path from "node:path";
 process.env.UPLOAD_DIR = path.join(os.tmpdir(), `housify-e2e-uploads-${process.pid}`);
 // Tests never touch real cloud storage.
 process.env.STORAGE_DRIVER = "local";
+// Emails are captured in memory instead of being sent.
+process.env.MAIL_DRIVER = "memory";

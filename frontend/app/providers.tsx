@@ -23,9 +23,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    onSessionEnded((reason, message) => {
+    onSessionEnded((_reason, message) => {
       if (!useAppStore.getState().loggedIn) return;
-      useAppStore.getState().logOut(reason === "blocked" ? message : "Your session expired. Please sign in again.");
+      // The API explains why, e.g. "Your password was changed. Please sign in again."
+      useAppStore.getState().logOut(message || "Your session expired. Please sign in again.");
       queryClient.clear();
       router.replace("/sign-in");
     });

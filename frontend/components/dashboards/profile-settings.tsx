@@ -172,6 +172,8 @@ function DetailsForm({ me }: { me: MeUser }) {
 
 function PasswordForm() {
   const token = useAppStore((s) => s.token);
+  const role = useAppStore((s) => s.role);
+  const logIn = useAppStore((s) => s.logIn);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -180,7 +182,9 @@ function PasswordForm() {
 
   const save = useMutation({
     mutationFn: () => changePassword(token!, current, next),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      // Other devices are now signed out; keep this one signed in with the new token.
+      if (role && res.token) logIn(role, res.token);
       setCurrent("");
       setNext("");
       setConfirm("");
@@ -200,7 +204,7 @@ function PasswordForm() {
 
   return (
     <form onSubmit={submit}>
-      <Section title="Password" description="Use at least 8 characters.">
+      <Section title="Password" description="Use at least 8 characters. Changing it signs you out on your other devices.">
         <div className="flex flex-col gap-4">
           <PasswordInput variant="solid" value={current} onChange={setCurrent} placeholder="Current password" autoComplete="current-password" required />
           <div className="grid gap-4 sm:grid-cols-2">

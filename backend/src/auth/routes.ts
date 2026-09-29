@@ -6,6 +6,29 @@ import { requireAuth } from "./middleware.js";
 import { email as emailField, oneOf, requiredStr, str, strList } from "../lib/validate.js";
 import { notifyAdmins } from "../notifications/service.js";
 import { isOwnUpload } from "../uploads/routes.js";
+import { createHash, randomBytes } from "node:crypto";
+import { PasswordReset } from "../models/PasswordReset.js";
+import { sendInBackground } from "../mail/index.js";
+import { passwordChangedEmail, passwordResetEmail } from "../mail/templates.js";
+import { env } from "../config/env.js";
+import { notify, DASHBOARD_BASE } from "../notifications/service.js";
+
+const RESET_MINUTES = 30;
+const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+const tokenFor = (user: { _id: unknown; role: unknown; tokenVersion?: number | null }) =>
+  signToken({ sub: String(user._id), role: user.role as Role, ver: user.tokenVersion ?? 0 });
+
+/** t***@gmail.com — enough to recognise, not enough to harvest. */
+function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  return `${local.slice(0, 1)}${"*".repeat(Math.max(2, local.length - 1))}@${domain}`;
+}
+
+/** Looks up an unused, unexpired reset by its raw token. */
+async function findLiveReset(token: unknown) {
+  if (typeof token !== "string" || token.length < 32 || token.length > 128) return null;
+  return PasswordReset.findOne({ tokenHash: hashToken(token), usedAt: null, expiresAt: { $gt: new Date() } });
+}
 
 const authRateLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
@@ -53,7 +76,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const token = signToken({ sub: user.id, role: user.role as Role });
+    const token = tokenFor(user);
     return reply.code(201).send({ token, user: toPublicUser(user) });
   });
 
@@ -77,7 +100,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: "This account has been deactivated.", code: "ACCOUNT_BLOCKED" });
     }
 
-    const token = signToken({ sub: user.id, role: user.role as Role });
+    const token = tokenFor(user);
     return reply.send({ token, user: toPublicUser(user) });
   });
 
@@ -161,7 +184,76 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    // Sign out every other device; this one gets a fresh token below.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
+    if (user.email) {
+      sendInBackground(passwordChangedEmail({ to: user.email, name: user.name, signInUrl: `${env.webOrigin}/sign-in` }), (err) => request.log.error(err));
+    }
+    return { ok: true, token: tokenFor(user) };
+  });
+
+  /* ───────── Password reset ───────── */
+
+  // Always answers the same way, whether or not the email has an account.
+  app.post("/auth/forgot-password", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const email = emailField(body.email)!;
+    const generic = { ok: true, message: "If an account uses that email, we've sent a link to reset the password." };
+
+    const user = await User.findOne({ email, role: { $ne: "admin" } });
+    if (!user || !user.email) return generic;
+
+    // Only the newest link works.
+    await PasswordReset.deleteMany({ userId: user._id, usedAt: null });
+    const token = randomBytes(32).toString("base64url");
+    await PasswordReset.create({
+      userId: user._id,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + RESET_MINUTES * 60 * 1000),
+      requestIp: request.ip,
+    });
+    const link = `${env.webOrigin}/reset-password?token=${encodeURIComponent(token)}`;
+    sendInBackground(passwordResetEmail({ to: user.email, name: user.name, link, minutes: RESET_MINUTES }), (err) => request.log.error(err));
+    return generic;
+  });
+
+  // Lets the reset page say "this link has expired" before asking for a password.
+  app.post("/auth/reset-password/check", { config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const reset = await findLiveReset((request.body as Record<string, unknown> | undefined)?.token);
+    if (!reset) return reply.code(400).send({ error: "This reset link is invalid or has expired.", code: "RESET_INVALID" });
+    const user = await User.findById(reset.userId).select("email").lean();
+    return { ok: true, email: user?.email ? maskEmail(user.email) : null, expiresAt: reset.expiresAt };
+  });
+
+  app.post("/auth/reset-password", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const password = requiredStr(body.password, "New password", 200);
+    if (password.length < 8) return reply.code(400).send({ error: "Password must be at least 8 characters." });
+
+    const reset = await findLiveReset(body.token);
+    if (!reset) return reply.code(400).send({ error: "This reset link is invalid or has expired.", code: "RESET_INVALID" });
+
+    // Claim the link atomically so two submissions can't both use it.
+    const claimed = await PasswordReset.findOneAndUpdate({ _id: reset._id, usedAt: null }, { usedAt: new Date() });
+    if (!claimed) return reply.code(400).send({ error: "This reset link has already been used.", code: "RESET_INVALID" });
+
+    const user = await User.findById(reset.userId);
+    if (!user) return reply.code(400).send({ error: "This reset link is invalid or has expired.", code: "RESET_INVALID" });
+    user.passwordHash = await bcrypt.hash(password, 10);
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1; // signs out every device
+    await user.save();
+    await PasswordReset.deleteMany({ userId: user._id, usedAt: null });
+
+    await notify(user._id, {
+      type: "account.password_reset",
+      title: "Your password was reset",
+      body: "If this wasn't you, contact the Housify team right away.",
+      link: `${DASHBOARD_BASE[user.role]}/profile`,
+    });
+    if (user.email) {
+      sendInBackground(passwordChangedEmail({ to: user.email, name: user.name, signInUrl: `${env.webOrigin}/sign-in` }), (err) => request.log.error(err));
+    }
     return { ok: true };
   });
 

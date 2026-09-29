@@ -5,6 +5,8 @@ import type { Role } from "../models/User.js";
 export interface AuthTokenPayload {
   sub: string;
   role: Role;
+  /** User.tokenVersion when the token was issued. Missing on tokens issued before versioning (treated as 0). */
+  ver?: number;
 }
 
 export function signToken(payload: AuthTokenPayload): string {

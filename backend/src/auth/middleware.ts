@@ -24,9 +24,13 @@ async function resolveUser(token: string): Promise<AuthTokenPayload | { error: s
   } catch {
     return { error: "Your session has expired. Please sign in again.", code: 401 };
   }
-  const user = await User.findById(payload.sub).select("role status").lean();
+  const user = await User.findById(payload.sub).select("role status tokenVersion").lean();
   if (!user) {
     return { error: "Your session has expired. Please sign in again.", code: 401 };
+  }
+  // A password reset/change invalidates every token issued before it.
+  if ((payload.ver ?? 0) !== (user.tokenVersion ?? 0)) {
+    return { error: "Your password was changed. Please sign in again.", code: 401 };
   }
   if (user.status === "suspended") {
     return { error: "This account has been suspended. Contact Housify support.", code: 403 };

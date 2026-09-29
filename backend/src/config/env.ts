@@ -27,7 +27,18 @@ export const env = {
   /** Where the local storage driver keeps uploads. */
   uploadDir: path.resolve(process.env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads")),
   storage: storageConfig(),
+  mail: mailConfig(),
 };
+
+/** "console" (default) prints emails to the terminal; "resend" sends them. */
+function mailConfig() {
+  const driver = (process.env.MAIL_DRIVER ?? "console").trim().toLowerCase();
+  if (driver === "console" || driver === "memory") return { driver: driver as "console" | "memory" };
+  if (driver !== "resend") throw new Error(`MAIL_DRIVER must be "console" or "resend" (got "${driver}").`);
+  const missing = ["RESEND_API_KEY", "MAIL_FROM"].filter((k) => !process.env[k]?.trim());
+  if (missing.length) throw new Error(`MAIL_DRIVER=resend but ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set in backend/.env.`);
+  return { driver: "resend" as const, resendApiKey: process.env.RESEND_API_KEY!.trim(), from: process.env.MAIL_FROM!.trim() };
+}
 
 /** "local" (default) keeps uploads on this server; "cloudinary" sends them to Cloudinary. */
 function storageConfig() {

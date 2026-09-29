@@ -46,6 +46,8 @@ const userSchema = new Schema(
     status: { type: String, enum: ACCOUNT_STATUSES, default: "active", index: true },
     statusReason: { type: String },
     statusChangedAt: { type: Date },
+    // Bumped on password reset/change; tokens carrying an older version stop working.
+    tokenVersion: { type: Number, default: 0 },
     avatarUrl: { type: String },
     states: { type: [String], default: undefined },
     areasCovered: { type: [String], default: undefined },

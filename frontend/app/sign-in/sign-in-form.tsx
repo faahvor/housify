@@ -4,13 +4,86 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Info, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Info, Loader2, MailCheck } from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import { login } from "@/lib/api";
+import { login, requestPasswordReset } from "@/lib/api";
 import { DASHBOARD_ROUTE } from "@/lib/roles";
 
 const field =
   "h-12 w-full rounded-xl border border-white/12 bg-white/[0.06] px-4 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-indigo-400/70 focus:bg-white/[0.09]";
+
+function ForgotPassword({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [sent, setSent] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("Enter the email address on your account.");
+    setError("");
+    setSending(true);
+    try {
+      const res = await requestPasswordReset(email.trim());
+      setSent(res.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send the email. Try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div role="status" className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-5 text-sm text-emerald-50">
+        <div className="mb-2 flex items-center gap-2 font-semibold text-white">
+          <MailCheck className="size-5 text-emerald-300" /> Check your inbox
+        </div>
+        <p className="text-white/80">{sent}</p>
+        <p className="mt-2 text-white/60">The link expires in 30 minutes. Not there? Check spam, or try again in a minute.</p>
+        <button type="button" onClick={onBack} className="mt-4 cursor-pointer text-[13px] font-semibold text-indigo-300 hover:text-indigo-200">
+          ← Back to sign in
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+      <div>
+        <div className="font-semibold text-white">Reset your password</div>
+        <p className="mt-1 text-sm text-white/60">Enter the email on your account and we&apos;ll send you a link to choose a new password.</p>
+      </div>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email address"
+        autoComplete="email"
+        aria-label="Email address"
+        autoFocus
+        className={field}
+      />
+      {error && (
+        <div role="alert" className="flex items-start gap-2 text-[13px] text-red-300">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
+      )}
+      <button
+        type="submit"
+        disabled={sending}
+        className="flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#4f46e5] text-sm font-semibold text-white transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+      >
+        {sending && <Loader2 className="size-4 animate-spin" />}
+        {sending ? "Sending…" : "Send reset link"}
+      </button>
+      <button type="button" onClick={onBack} className="cursor-pointer text-[13px] font-semibold text-indigo-300 hover:text-indigo-200">
+        ← Back to sign in
+      </button>
+    </form>
+  );
+}
 
 export function SignInForm() {
   const router = useRouter();
@@ -26,7 +99,7 @@ export function SignInForm() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
+  const [showForgot, setShowForgot] = useState(searchParams.get("forgot") === "1");
   const [showPassword, setShowPassword] = useState(false);
 
   // Show "session expired"/"account suspended" once, then forget it.
@@ -73,20 +146,7 @@ export function SignInForm() {
       )}
 
       {showForgot ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75">
-          <div className="mb-2 font-semibold text-white">Forgot your password?</div>
-          <p>
-            Email-based password reset isn&apos;t available yet. If you can&apos;t sign in, contact the Housify team from the
-            email address on your account and we&apos;ll help you regain access.
-          </p>
-          <button
-            type="button"
-            onClick={() => setShowForgot(false)}
-            className="mt-4 cursor-pointer text-[13px] font-semibold text-indigo-300 hover:text-indigo-200"
-          >
-            ← Back to sign in
-          </button>
-        </div>
+        <ForgotPassword initialEmail={identifier.includes("@") ? identifier.trim() : ""} onBack={() => setShowForgot(false)} />
       ) : (
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <input

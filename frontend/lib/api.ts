@@ -114,8 +114,21 @@ export function updateMe(token: string, patch: ProfilePatch) {
   return apiFetch<{ user: MeUser }>("/auth/me", json("PATCH", patch), token);
 }
 
+/** Also signs out every other device; returns a fresh token for this one. */
 export function changePassword(token: string, currentPassword: string, newPassword: string) {
-  return apiFetch<{ ok: boolean }>("/auth/me/password", json("PATCH", { currentPassword, newPassword }), token);
+  return apiFetch<{ ok: boolean; token: string }>("/auth/me/password", json("PATCH", { currentPassword, newPassword }), token);
+}
+
+export function requestPasswordReset(email: string) {
+  return apiFetch<{ ok: boolean; message: string }>("/auth/forgot-password", json("POST", { email }));
+}
+
+export function checkResetToken(token: string) {
+  return apiFetch<{ ok: boolean; email: string | null; expiresAt: string }>("/auth/reset-password/check", json("POST", { token }));
+}
+
+export function resetPassword(token: string, password: string) {
+  return apiFetch<{ ok: boolean }>("/auth/reset-password", json("POST", { token, password }));
 }
 
 export function deactivateAccount(token: string, password: string) {

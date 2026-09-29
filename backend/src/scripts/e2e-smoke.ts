@@ -17,6 +17,8 @@ import mongoose from "mongoose";
 import { buildApp } from "../app.js";
 import { User } from "../models/User.js";
 import { signToken } from "../auth/jwt.js";
+import { outbox } from "../mail/index.js";
+import { PasswordReset } from "../models/PasswordReset.js";
 
 const baseUri = process.env.MONGODB_URI;
 if (!baseUri) throw new Error("MONGODB_URI is not set.");
@@ -108,10 +110,56 @@ async function main() {
       assert.deepEqual(me.body.user.areasCovered, ["Lekki"]);
     });
 
-    await step("password change checks the current password", async () => {
+    await step("password change checks the current password and signs out other sessions", async () => {
       assert.equal((await call("PATCH", "/auth/me/password", { token: user, body: { currentPassword: "wrong-one", newPassword: "newpassword1" } })).status, 400);
-      assert.equal((await call("PATCH", "/auth/me/password", { token: user, body: { currentPassword: "password123", newPassword: "newpassword1" } })).status, 200);
+      const changed = await call("PATCH", "/auth/me/password", { token: user, body: { currentPassword: "password123", newPassword: "newpassword1" } });
+      assert.equal(changed.status, 200);
+      assert.equal((await call("GET", "/auth/me", { token: user })).status, 401, "the old session is signed out");
+      user = changed.body.token;
+      assert.equal((await call("GET", "/auth/me", { token: user })).status, 200, "the session that changed it continues");
       assert.equal((await call("POST", "/auth/login", { body: { identifier: "renter@test.dev", password: "newpassword1" } })).status, 200);
+    });
+
+    await step("password reset by email", async () => {
+      await new Promise((r) => setTimeout(r, 20)); // let the "password changed" email flush
+      outbox.length = 0;
+      const unknown = await call("POST", "/auth/forgot-password", { body: { email: "nobody@test.dev" } });
+      const known = await call("POST", "/auth/forgot-password", { body: { email: "RENTER@test.dev" } });
+      assert.equal(unknown.status, 200);
+      assert.deepEqual(unknown.body, known.body, "same answer whether or not the account exists");
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(outbox.length, 1, "only the real account gets an email");
+      assert.equal(outbox[0].to, "renter@test.dev");
+      const token = decodeURIComponent(outbox[0].text.match(/token=([^\s]+)/)![1]);
+      assert.ok(!(await PasswordReset.exists({ tokenHash: token })), "the raw token is never stored");
+
+      const check = await call("POST", "/auth/reset-password/check", { body: { token } });
+      assert.equal(check.status, 200);
+      assert.equal(check.body.email, "r*****@test.dev");
+      assert.equal((await call("POST", "/auth/reset-password/check", { body: { token: "x".repeat(43) } })).status, 400);
+
+      assert.equal((await call("POST", "/auth/reset-password", { body: { token, password: "short" } })).status, 400);
+      const other = await call("POST", "/auth/login", { body: { identifier: "renter@test.dev", password: "newpassword1" } });
+      assert.equal((await call("POST", "/auth/reset-password", { body: { token, password: "brand-new-pass" } })).status, 200);
+      assert.equal((await call("POST", "/auth/reset-password", { body: { token, password: "another-pass-1" } })).status, 400, "links are single-use");
+      assert.equal((await call("GET", "/auth/me", { token: other.body.token })).status, 401, "every existing session is signed out");
+      assert.equal((await call("POST", "/auth/login", { body: { identifier: "renter@test.dev", password: "newpassword1" } })).status, 401);
+      const fresh = await call("POST", "/auth/login", { body: { identifier: "renter@test.dev", password: "brand-new-pass" } });
+      assert.equal(fresh.status, 200);
+      user = fresh.body.token;
+      await new Promise((r) => setTimeout(r, 20));
+      assert.ok(outbox.some((m) => m.subject.includes("password was changed")), "a confirmation email is sent");
+      const notes = (await call("GET", "/notifications", { token: user })).body.items;
+      assert.ok(notes.some((n: Json) => n.type === "account.password_reset"), "an in-app notice is posted too");
+      await call("POST", "/notifications/read-all", { token: user });
+
+      // An expired link doesn't work.
+      outbox.length = 0;
+      await call("POST", "/auth/forgot-password", { body: { email: "renter@test.dev" } });
+      await new Promise((r) => setTimeout(r, 20));
+      const late = decodeURIComponent(outbox[0].text.match(/token=([^\s]+)/)![1]);
+      await PasswordReset.updateMany({}, { expiresAt: new Date(Date.now() - 1000) });
+      assert.equal((await call("POST", "/auth/reset-password", { body: { token: late, password: "too-late-pass" } })).status, 400);
     });
 
     await step("renters can't create listings; landlords can", async () => {
