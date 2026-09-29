@@ -1,12 +1,57 @@
+# Dependencies & build output
 node_modules/
 .next/
+out/
 dist/
 build/
-.env
-.env.local
-.env.*.local
-*.log
-.DS_Store
 coverage/
 .turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment files — ALL of them, including examples. Secrets live only on
+# each machine / hosting dashboard, never in the repository.
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+
+# Keys, certificates & credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+*.keystore
+credentials*.json
+service-account*.json
+*secret*.json
+
+# User uploads & local data (media now lives in Cloudinary)
 backend/uploads/
+uploads/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+backups/
+
+# Logs & debug output
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor, OS & local tool settings
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+.claude/
