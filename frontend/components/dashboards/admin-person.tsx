@@ -94,7 +94,7 @@ export function AdminPersonPage({ id }: { id: string }) {
 
       <section className="animate-in fade-in slide-in-from-bottom-2 mb-4 rounded-2xl border border-border bg-card p-6 shadow-soft duration-500">
         <div className="flex flex-wrap items-start gap-5">
-          <Avatar name={person.name} size={64} />
+          <Avatar name={person.name} src={person.avatarUrl} size={64} />
           <div className="min-w-[220px] flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{person.name}</h1>

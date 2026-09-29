@@ -67,6 +67,7 @@ export interface MeUser {
   experience?: string;
   verified: boolean;
   status: AccountStatus;
+  avatarUrl?: string | null;
   createdAt: string;
 }
 
@@ -105,6 +106,8 @@ export type ProfilePatch = Partial<{
   states: string[];
   areasCovered: string[];
   experience: string;
+  /** An uploaded avatar URL, or "" to remove it. */
+  avatarUrl: string;
 }>;
 
 export function updateMe(token: string, patch: ProfilePatch) {
@@ -129,6 +132,7 @@ export interface ListingOwner {
   name: string;
   role: Role;
   verified: boolean;
+  avatarUrl?: string | null;
   phone?: string | null;
   whatsapp?: string | null;
   bio?: string | null;
@@ -415,6 +419,7 @@ export function getAdminStats(token: string) {
 export interface AdminPerson {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   email?: string;
   phone: string;
   verified: boolean;
@@ -509,6 +514,7 @@ export interface Professional {
   name: string;
   bio: string | null;
   verified: boolean;
+  avatarUrl?: string | null;
   states: string[];
   areasCovered: string[];
   experience: string | null;
@@ -526,4 +532,60 @@ export function searchProfessionals(query: { role?: string; q?: string; area?: s
 
 export function getProfessional(id: string) {
   return apiFetch<{ profile: Professional; listings: Listing[] }>(`/professionals/${id}`);
+}
+
+/* ───────── Uploads ───────── */
+
+export type UploadKind = "listing-photo" | "listing-video" | "avatar";
+
+export interface UploadedFile {
+  id: string;
+  kind: UploadKind;
+  url: string;
+  contentType: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Uploads one file. Uses XMLHttpRequest rather than fetch because fetch can't
+ * report upload progress. `signal` cancels the upload.
+ */
+export function uploadFile(
+  token: string,
+  kind: UploadKind,
+  file: File,
+  opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal } = {}
+): Promise<UploadedFile> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}/uploads?kind=${kind}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      let data: { upload?: UploadedFile; error?: string; code?: string } = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON error page */
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && data.upload) return resolve(data.upload);
+      if (xhr.status === 401) sessionListener?.("expired", data.error ?? "Session expired.");
+      if (xhr.status === 403 && data.code === "ACCOUNT_BLOCKED") sessionListener?.("blocked", data.error ?? "Account blocked.");
+      reject(new ApiError(data.error ?? (xhr.status === 413 ? "That file is too large." : "Upload failed."), xhr.status, data.code));
+    };
+    xhr.onerror = () => reject(new ApiError("Upload failed. Check your connection and try again.", 0));
+    xhr.onabort = () => reject(new ApiError("Upload cancelled.", 0, "ABORTED"));
+    opts.signal?.addEventListener("abort", () => xhr.abort());
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
+}
+
+export function deleteUpload(token: string, id: string) {
+  return apiFetch<{ ok: boolean }>(`/uploads/${id}`, json("DELETE"), token);
 }

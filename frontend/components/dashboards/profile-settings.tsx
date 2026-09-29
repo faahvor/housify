@@ -7,7 +7,7 @@ import { BadgeCheck, Check, Clock, Loader2, TriangleAlert } from "lucide-react";
 import { FormInput, FormTextarea } from "@/components/form-input";
 import { MultiSelectSearch } from "@/components/multi-select-search";
 import { PasswordInput } from "@/components/password-input";
-import { Avatar } from "@/components/avatar";
+import { AvatarUploader } from "@/components/dashboards/avatar-uploader";
 import { useAppStore } from "@/lib/store";
 import { changePassword, deactivateAccount, updateMe, type MeUser, type ProfilePatch } from "@/lib/api";
 import { LOCATIONS, areasForStates } from "@/lib/locations";
@@ -293,7 +293,7 @@ export function ProfileSettings() {
       ) : (
         <>
           <div className="animate-in fade-in slide-in-from-bottom-2 mb-4 flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-soft duration-500">
-            <Avatar name={me.name} size={56} />
+            <AvatarUploader me={me} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-display text-lg font-semibold">{me.name}</div>
               <div className="text-sm text-muted-foreground">

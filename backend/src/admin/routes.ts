@@ -18,6 +18,7 @@ function person(u: any, extra: Record<string, unknown> = {}) {
     email: u.email,
     phone: u.phone ?? "",
     verified: u.verified,
+    avatarUrl: u.avatarUrl ?? null,
     status: u.status ?? "active",
     createdAt: u.createdAt,
     ...extra,

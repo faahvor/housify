@@ -7,7 +7,10 @@
  * MONGODB_URI (never the real database), exercises every role's flows through
  * `app.inject()` (no port is opened), then drops that database.
  */
+import "./e2e-env.js";
 import "dotenv/config";
+import { rm } from "node:fs/promises";
+import sharp from "sharp";
 import assert from "node:assert/strict";
 import bcrypt from "bcrypt";
 import mongoose from "mongoose";
@@ -36,6 +39,22 @@ async function main() {
       ...(opts.body !== undefined && { payload: opts.body as Json }),
     });
     return { status: res.statusCode, body: res.body ? (res.json() as Json) : {} };
+  }
+  /** POST one file as multipart/form-data. */
+  async function upload(kind: string, token: string, filename: string, contentType: string, data: Buffer) {
+    const boundary = `----housify${Date.now()}`;
+    const payload = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`),
+      data,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await app.inject({
+      method: "POST",
+      url: `/uploads?kind=${kind}`,
+      headers: { authorization: `Bearer ${token}`, "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload,
+    });
+    return { status: res.statusCode, body: res.json() as Json };
   }
   async function step(name: string, fn: () => Promise<void>) {
     await fn();
@@ -108,6 +127,60 @@ async function main() {
       assert.equal((await call("PATCH", `/listings/${listingId}`, { token: realtor, body: { beds: 3 } })).status, 403);
       const r = await call("PATCH", `/listings/${listingId}`, { token: landlord, body: { beds: 3 } });
       assert.equal(r.body.listing.beds, 3);
+    });
+
+    await step("uploads: photos are validated, resized, stripped and owner-only", async () => {
+      const big = await sharp({ create: { width: 3000, height: 2000, channels: 3, background: "#4f46e5" } })
+        .jpeg()
+        .withExif({ IFD0: { Copyright: "private" } })
+        .toBuffer();
+      const up = await upload("listing-photo", landlord, "living-room.jpg", "image/jpeg", big);
+      assert.equal(up.status, 201, JSON.stringify(up.body));
+      assert.equal(up.body.upload.contentType, "image/webp");
+      assert.equal(up.body.upload.width, 2000, "resized to fit 2000px");
+
+      const file = await app.inject({ method: "GET", url: new URL(up.body.upload.url).pathname });
+      assert.equal(file.statusCode, 200);
+      assert.equal(file.headers["content-type"], "image/webp");
+      assert.equal((await sharp(file.rawPayload).metadata()).exif, undefined, "metadata is stripped");
+      for (const probe of ["/uploads/", "/uploads/../.env", "/uploads/%2e%2e/.env"]) {
+        const res = await app.inject({ method: "GET", url: probe });
+        assert.ok([403, 404].includes(res.statusCode), `${probe} must be refused, got ${res.statusCode}`);
+      }
+
+      assert.equal((await upload("listing-photo", user, "x.jpg", "image/jpeg", big)).status, 403, "renters can't upload listing media");
+      assert.equal((await upload("listing-photo", landlord, "fake.jpg", "image/jpeg", Buffer.from("not really an image"))).status, 400);
+      assert.equal((await upload("nonsense", landlord, "x.jpg", "image/jpeg", big)).status, 400);
+
+      const withPhoto = await call("PATCH", `/listings/${listingId}`, { token: landlord, body: { photos: [up.body.upload.url] } });
+      assert.equal(withPhoto.status, 200, JSON.stringify(withPhoto.body));
+      assert.deepEqual(withPhoto.body.listing.photos, [up.body.upload.url]);
+
+      const stolen = await call("POST", "/listings", {
+        token: agent,
+        body: { title: "t", description: "d", type: "rent", address: "a", location: "Lekki", price: { amount: 1 }, beds: 1, baths: 1, sqft: 1, photos: [up.body.upload.url] },
+      });
+      assert.equal(stolen.status, 400, "can't list someone else's uploaded photo");
+
+      assert.equal((await call("DELETE", `/uploads/${up.body.upload.id}`, { token: landlord })).status, 409, "in-use files can't be deleted");
+      assert.equal((await call("DELETE", `/uploads/${up.body.upload.id}`, { token: agent })).status, 403);
+    });
+
+    await step("uploads: avatars and videos", async () => {
+      const face = await sharp({ create: { width: 900, height: 1200, channels: 3, background: "#0891b2" } }).png().toBuffer();
+      const av = await upload("avatar", user, "me.png", "image/png", face);
+      assert.equal(av.status, 201);
+      assert.equal(av.body.upload.width, 512);
+      assert.equal((await call("PATCH", "/auth/me", { token: user, body: { avatarUrl: av.body.upload.url } })).status, 200);
+      assert.equal((await call("GET", "/auth/me", { token: user })).body.user.avatarUrl, av.body.upload.url);
+      assert.equal((await call("PATCH", "/auth/me", { token: agent, body: { avatarUrl: av.body.upload.url } })).status, 400, "can't use someone else's photo");
+
+      const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(64)]);
+      const vid = await upload("listing-video", landlord, "tour.mp4", "video/mp4", mp4);
+      assert.equal(vid.status, 201);
+      assert.equal(vid.body.upload.contentType, "video/mp4");
+      assert.equal((await upload("listing-video", landlord, "tour.mp4", "video/mp4", Buffer.from("definitely not a video"))).status, 400);
+      assert.equal((await call("DELETE", `/uploads/${vid.body.upload.id}`, { token: landlord })).status, 200, "unused files can be deleted");
     });
 
     await step("public search and filters", async () => {
@@ -258,6 +331,7 @@ async function main() {
     console.log(`\nAll ${passed} checks passed.`);
   } finally {
     await app.close();
+    await rm(process.env.UPLOAD_DIR!, { recursive: true, force: true });
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(`Dropped ${dbName}.`);

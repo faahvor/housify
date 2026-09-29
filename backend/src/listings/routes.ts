@@ -2,7 +2,24 @@ import type { FastifyInstance } from "fastify";
 import { Listing, PROPERTY_TYPES } from "../models/Listing.js";
 import { User, LISTING_ROLES } from "../models/User.js";
 import { optionalAuth, requireAuth, requireRole } from "../auth/middleware.js";
-import { bool, escapeRegex, num, objectId, oneOf, requiredStr, str, strList, urlList } from "../lib/validate.js";
+import { bool, escapeRegex, num, objectId, oneOf, requiredStr, str, strList, urlList, ValidationError } from "../lib/validate.js";
+import { storage } from "../storage/index.js";
+import { isOwnUpload } from "../uploads/routes.js";
+
+/** Uploaded files on a listing must have been uploaded by the person listing it. */
+async function assertOwnMedia(data: Record<string, unknown>, ownerId: string) {
+  const checks: [unknown, "listing-photo" | "listing-video"][] = [
+    [data.photos, "listing-photo"],
+    [data.videos, "listing-video"],
+  ];
+  for (const [urls, kind] of checks) {
+    for (const url of (urls as string[] | undefined) ?? []) {
+      if (storage.owns(url) && !(await isOwnUpload(url, ownerId, kind))) {
+        throw new ValidationError("One of the files isn't yours or is the wrong type. Upload it again.");
+      }
+    }
+  }
+}
 
 const SORTS = {
   newest: { createdAt: -1 },
@@ -97,7 +114,7 @@ export async function registerListingRoutes(app: FastifyInstance): Promise<void>
         .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate("landlordId", "name role verified")
+        .populate("landlordId", "name role verified avatarUrl")
         .lean(),
       Listing.countDocuments(filter),
     ]);
@@ -106,7 +123,7 @@ export async function registerListingRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/listings/:id", { preHandler: optionalAuth }, async (request, reply) => {
     const id = objectId((request.params as { id: string }).id, "Listing id");
-    const listing = await Listing.findById(id).populate("landlordId", "name role verified phone whatsapp bio status createdAt").lean();
+    const listing = await Listing.findById(id).populate("landlordId", "name role verified avatarUrl phone whatsapp bio status createdAt").lean();
     if (!listing) return reply.code(404).send({ error: "Listing not found." });
 
     const owner = listing.landlordId as any;
@@ -122,6 +139,7 @@ export async function registerListingRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/listings", { preHandler: requireRole(...LISTING_ROLES) }, async (request, reply) => {
     const data = parseListingInput((request.body ?? {}) as Record<string, unknown>, false);
+    await assertOwnMedia(data, request.authUser!.sub);
     const listing = await Listing.create({ ...data, landlordId: request.authUser!.sub, status: "active" });
     return reply.code(201).send({ listing: toPublicListing(listing.toObject()) });
   });
@@ -141,7 +159,9 @@ export async function registerListingRoutes(app: FastifyInstance): Promise<void>
     if (listing.status === "removed") {
       return reply.code(409).send({ error: "This listing was removed by Housify and can't be edited." });
     }
-    listing.set(parseListingInput((request.body ?? {}) as Record<string, unknown>, true));
+    const patch = parseListingInput((request.body ?? {}) as Record<string, unknown>, true);
+    await assertOwnMedia(patch, request.authUser!.sub);
+    listing.set(patch);
     await listing.save();
     return { listing: toPublicListing(listing.toObject()) };
   });
@@ -207,6 +227,7 @@ export function toPublicListing(listing: any, opts: { withContact?: boolean } = 
           name: owner.name,
           role: owner.role,
           verified: owner.verified,
+          avatarUrl: owner.avatarUrl ?? null,
           ...(opts.withContact && {
             phone: owner.phone ?? null,
             whatsapp: owner.whatsapp ?? null,

@@ -131,7 +131,7 @@ export function PeopleDirectory() {
             {visible.map((p) => (
               <li key={p.id}>
                 <Link href={`/admin/people/${p.id}`} className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-secondary/50 sm:px-6">
-                  <Avatar name={p.name} size={38} />
+                  <Avatar name={p.name} src={p.avatarUrl} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-semibold">{p.name}</div>
                     <div className="truncate text-xs text-muted-foreground">

@@ -1,4 +1,5 @@
 import { isValidObjectId } from "mongoose";
+import { storage } from "../storage/index.js";
 
 /** Thrown by the helpers below; the error handler turns it into a 400. */
 export class ValidationError extends Error {
@@ -66,10 +67,11 @@ export function strList(value: unknown, field: string, maxItems = 50, maxLen = 1
   return value.map((v, i) => requiredStr(v, `${field} item ${i + 1}`, maxLen));
 }
 
+/** https:// links, or files uploaded to Housify's own storage. */
 export function urlList(value: unknown, field: string, maxItems = 30): string[] | undefined {
   const list = strList(value, field, maxItems, 2048);
   for (const u of list ?? []) {
-    if (!/^https:\/\/\S+$/i.test(u)) fail(`${field} must contain https:// links.`);
+    if (!storage.owns(u) && !/^https:\/\/\S+$/i.test(u)) fail(`${field} must contain https:// links or uploaded files.`);
   }
   return list;
 }

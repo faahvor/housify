@@ -13,6 +13,7 @@ function toPublicProfessional(u: any, extra: Record<string, unknown> = {}) {
     name: u.name,
     bio: u.bio ?? null,
     verified: !!u.verified,
+    avatarUrl: u.avatarUrl ?? null,
     states: u.states ?? [],
     areasCovered: u.areasCovered ?? [],
     experience: u.experience ?? null,
@@ -47,7 +48,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance): Promise<
         .sort({ verified: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .select("role name bio verified states areasCovered experience createdAt")
+        .select("role name bio verified avatarUrl states areasCovered experience createdAt")
         .lean(),
       User.countDocuments(filter),
     ]);
@@ -80,7 +81,7 @@ export async function registerProfessionalRoutes(app: FastifyInstance): Promise<
         liveListings: listings.length,
       }),
       listings: listings.map((l) =>
-        toPublicListing({ ...l, landlordId: { _id: user._id, name: user.name, role: user.role, verified: user.verified } })
+        toPublicListing({ ...l, landlordId: { _id: user._id, name: user.name, role: user.role, verified: user.verified, avatarUrl: user.avatarUrl } })
       ),
     };
   });

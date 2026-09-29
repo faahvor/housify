@@ -5,6 +5,7 @@ import { signToken } from "./jwt.js";
 import { requireAuth } from "./middleware.js";
 import { email as emailField, oneOf, requiredStr, str, strList } from "../lib/validate.js";
 import { notifyAdmins } from "../notifications/service.js";
+import { isOwnUpload } from "../uploads/routes.js";
 
 const authRateLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
@@ -124,6 +125,13 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
     if (body.whatsapp !== undefined) user.whatsapp = str(body.whatsapp, "WhatsApp", { max: 30 }) ?? undefined;
     if (body.bio !== undefined) user.bio = str(body.bio, "Bio", { max: 2000 }) ?? undefined;
+    if (body.avatarUrl !== undefined) {
+      const avatarUrl = str(body.avatarUrl, "Profile photo", { max: 2048 });
+      if (avatarUrl && !(await isOwnUpload(avatarUrl, user.id, "avatar"))) {
+        return reply.code(400).send({ error: "Upload your profile photo first." });
+      }
+      user.avatarUrl = avatarUrl ?? undefined;
+    }
     if (professional) {
       if (body.states !== undefined) user.states = strList(body.states, "States") ?? [];
       if (body.areasCovered !== undefined) user.areasCovered = strList(body.areasCovered, "Areas", 200) ?? [];

@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarPlus, ImagePlus, Loader2, Plus, Video, X } from "lucide-react";
+import { CalendarPlus, Loader2, Plus, X } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { createListing, updateListing, type Listing, type ListingInput, type PropertyType } from "@/lib/api";
 import { AREAS_BY_STATE } from "@/lib/locations";
 import { cn } from "@/lib/utils";
 import { ErrorBanner, PageHeader } from "@/components/dashboards/ui";
+import { MediaUploader } from "@/components/dashboards/media-uploader";
 
 const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: "apartment", label: "Apartment / flat" },
@@ -77,69 +78,6 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
-function UrlList({ values, onChange, placeholder, icon: Icon, preview }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; icon: typeof ImagePlus; preview?: boolean }) {
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState("");
-  function add() {
-    const url = draft.trim();
-    if (!url) return;
-    if (!/^https:\/\/\S+$/i.test(url)) return setError("Use a full https:// link.");
-    if (values.includes(url)) return setError("Already added.");
-    onChange([...values, url]);
-    setDraft("");
-    setError("");
-  }
-  return (
-    <div>
-      <div className="flex gap-2">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-          placeholder={placeholder}
-          className={input}
-          inputMode="url"
-        />
-        <button type="button" onClick={add} className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-border px-3.5 text-sm font-semibold transition-colors hover:border-primary/40 hover:text-primary">
-          <Icon className="size-4" /> Add
-        </button>
-      </div>
-      {error && <div className="mt-1.5 text-xs text-destructive">{error}</div>}
-      {values.length > 0 && (
-        <ul className={cn("mt-3", preview ? "grid grid-cols-2 gap-3 sm:grid-cols-4" : "flex flex-col gap-2")}>
-          {values.map((url, i) => (
-            <li key={url} className={cn("group relative", !preview && "flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-xs")}>
-              {preview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={url} alt={`Photo ${i + 1}`} className="aspect-[4/3] w-full rounded-xl border border-border object-cover" />
-              ) : (
-                <span className="min-w-0 flex-1 truncate">{url}</span>
-              )}
-              {preview && i === 0 && <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">Cover</span>}
-              <button
-                type="button"
-                onClick={() => onChange(values.filter((v) => v !== url))}
-                aria-label="Remove"
-                className={cn(
-                  "flex size-6 cursor-pointer items-center justify-center rounded-full",
-                  preview ? "absolute top-2 right-2 bg-black/60 text-white" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <X className="size-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function ListingEditor({ basePath, listing }: { basePath: string; listing?: Listing }) {
   const token = useAppStore((s) => s.token);
   const router = useRouter();
@@ -167,6 +105,11 @@ export function ListingEditor({ basePath, listing }: { basePath: string; listing
   const [customAmenity, setCustomAmenity] = useState("");
   const [date, setDate] = useState("");
   const set = <K extends keyof ListingInput>(key: K, value: ListingInput[K]) => setForm((f) => ({ ...f, [key]: value }));
+  const updatePhotos = useCallback((fn: (prev: string[]) => string[]) => setForm((f) => ({ ...f, photos: fn(f.photos) })), []);
+  const updateVideos = useCallback((fn: (prev: string[]) => string[]) => setForm((f) => ({ ...f, videos: fn(f.videos) })), []);
+  const [photosBusy, setPhotosBusy] = useState(false);
+  const [videosBusy, setVideosBusy] = useState(false);
+  const uploading = photosBusy || videosBusy;
 
   const locationOptions = useMemo(
     () =>
@@ -328,11 +271,12 @@ export function ListingEditor({ basePath, listing }: { basePath: string; listing
           </Card>
         )}
 
-        <Card title="Photos & video" description="Paste https:// links to your images. The first photo is the cover. Direct uploads are coming soon.">
-          <div className="flex flex-col gap-6">
-            <UrlList values={form.photos} onChange={(v) => set("photos", v)} placeholder="https://…/living-room.jpg" icon={ImagePlus} preview />
-            <UrlList values={form.videos} onChange={(v) => set("videos", v)} placeholder="Video tour link (YouTube, Vimeo…)" icon={Video} />
-          </div>
+        <Card title="Photos" description="Listings with bright, real photos get far more inquiries. The first photo is the cover — use the arrows to reorder.">
+          <MediaUploader kind="listing-photo" values={form.photos} onChange={updatePhotos} max={30} onBusyChange={setPhotosBusy} disabled={listing?.status === "removed"} />
+        </Card>
+
+        <Card title="Video tour" description="Optional. Upload a short walkthrough or add a YouTube/Vimeo link.">
+          <MediaUploader kind="listing-video" values={form.videos} onChange={updateVideos} max={5} onBusyChange={setVideosBusy} disabled={listing?.status === "removed"} />
         </Card>
 
         <Card title="Viewing availability" description="Dates you're available to show the property.">
@@ -371,11 +315,11 @@ export function ListingEditor({ basePath, listing }: { basePath: string; listing
           </button>
           <button
             type="submit"
-            disabled={save.isPending || listing?.status === "removed"}
+            disabled={save.isPending || uploading || listing?.status === "removed"}
             className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-glow transition-all hover:-translate-y-px hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {save.isPending && <Loader2 className="size-4 animate-spin" />}
-            {editing ? "Save changes" : "Publish listing"}
+            {uploading ? "Uploading…" : editing ? "Save changes" : "Publish listing"}
           </button>
         </div>
       </form>

@@ -382,6 +382,13 @@ export function ListingView({ id }: { id: string }) {
               <div className="mt-4 flex flex-col gap-4">
                 {listing.videos.map((v) => {
                   const embed = videoEmbed(v);
+                  if (/\.(mp4|mov|webm)(\?|$)/i.test(v)) {
+                    return (
+                      <video key={v} src={v} controls preload="metadata" playsInline className="aspect-video w-full rounded-2xl border border-border bg-black">
+                        <track kind="captions" />
+                      </video>
+                    );
+                  }
                   return embed ? (
                     <div key={v} className="aspect-video overflow-hidden rounded-2xl border border-border">
                       <iframe src={embed} title={`${listing.title} video tour`} className="size-full" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen loading="lazy" />
@@ -439,7 +446,7 @@ export function ListingView({ id }: { id: string }) {
             {owner && (
               <div className="mt-6 border-t border-border pt-6">
                 <Link href={`/pros/${owner.id}`} className="group flex items-center gap-3">
-                  <Avatar name={owner.name} size={48} />
+                  <Avatar name={owner.name} src={owner.avatarUrl} size={48} />
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5 font-semibold group-hover:text-primary">
                       <span className="truncate">{owner.name}</span>

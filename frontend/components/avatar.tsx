@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { User } from "lucide-react";
 
 const PALETTE = [
@@ -28,18 +31,38 @@ function initialsOf(name?: string | null): string {
 
 interface AvatarProps {
   name?: string | null;
+  /** Uploaded profile photo; falls back to initials if missing or broken. */
+  src?: string | null;
   size?: number;
   className?: string;
 }
 
-export function Avatar({ name, size = 40, className = "" }: AvatarProps) {
+export function Avatar({ name, src, size = 40, className = "" }: AvatarProps) {
+  const [broken, setBroken] = useState(false);
   const initials = initialsOf(name);
   const palette = PALETTE[name ? hashString(name) % PALETTE.length : 0];
+
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={name ? `${name}'s profile photo` : "Profile photo"}
+        width={size}
+        height={size}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className={`flex-shrink-0 rounded-full object-cover ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
 
   return (
     <div
       className={`flex flex-shrink-0 items-center justify-center rounded-full font-semibold ${palette} ${className}`}
       style={{ width: size, height: size, fontSize: size * 0.38 }}
+      aria-hidden={!!initials}
     >
       {initials || <User style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={2} />}
     </div>

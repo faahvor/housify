@@ -443,7 +443,7 @@ function PeopleResults() {
                 className="group flex h-full flex-col rounded-3xl border border-border bg-card p-6 shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30"
               >
                 <div className="flex items-center gap-3">
-                  <Avatar name={p.name} size={48} />
+                  <Avatar name={p.name} src={p.avatarUrl} size={48} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 font-semibold">
                       <span className="truncate">{p.name}</span>

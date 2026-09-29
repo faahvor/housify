@@ -131,7 +131,7 @@ export function ProfessionalView({ id }: { id: string }) {
         <div className="absolute inset-0 bg-[linear-gradient(120deg,#1e1b4b_0%,#312e81_45%,#0b0d12_100%)]" />
         <div className="bg-grid absolute inset-0 opacity-15 [mask-image:radial-gradient(ellipse_at_top_right,black,transparent_70%)]" />
         <div className="relative flex flex-wrap items-center gap-6">
-          <Avatar name={profile.name} size={88} className="ring-4 ring-white/15" />
+          <Avatar name={profile.name} src={profile.avatarUrl} size={88} className="ring-4 ring-white/15" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-3xl font-semibold sm:text-4xl">{profile.name}</h1>

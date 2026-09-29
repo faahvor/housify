@@ -8,6 +8,7 @@ import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { Logo } from "@/components/brand/logo";
 import { NotificationsBell } from "@/components/dashboards/notifications-bell";
+import { useMe } from "@/components/dashboards/account-status";
 
 interface TopbarProps {
   pageTitle: string;
@@ -32,6 +33,7 @@ const menuItem =
 
 export function DashboardTopbar({ pageTitle, roleLabel, profileHref, supportHref, onOpenSearch, onLogout }: TopbarProps) {
   const user = useAppStore((s) => s.user);
+  const { data: me } = useMe();
   const theme = useAppStore((s) => s.theme);
   const toggleTheme = useAppStore((s) => s.toggleTheme);
   const isMac = useIsMac();
@@ -80,7 +82,7 @@ export function DashboardTopbar({ pageTitle, roleLabel, profileHref, supportHref
               aria-label="Account menu"
               className="ml-1 flex cursor-pointer items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none sm:pr-2"
             >
-              <Avatar name={user?.name} size={32} />
+              <Avatar name={user?.name} src={me?.avatarUrl} size={32} />
               <span className="hidden max-w-[140px] truncate text-sm font-medium sm:block">{displayName}</span>
               <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
             </Menu.Trigger>
@@ -88,7 +90,7 @@ export function DashboardTopbar({ pageTitle, roleLabel, profileHref, supportHref
               <Menu.Positioner align="end" sideOffset={8} className="z-50">
                 <Menu.Popup className="w-60 origin-[var(--transform-origin)] rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl transition-all duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
                   <div className="flex items-center gap-3 px-2.5 pt-2 pb-3">
-                    <Avatar name={user?.name} size={36} />
+                    <Avatar name={user?.name} src={me?.avatarUrl} size={36} />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold">{displayName}</div>
                       <div className="truncate text-xs text-muted-foreground">{user?.email || roleLabel}</div>
